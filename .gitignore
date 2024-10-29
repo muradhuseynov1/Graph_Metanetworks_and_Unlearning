@@ -1,0 +1,13 @@
+
+03_AML2425_Unlearning/Practice/checkpoint/forget_model.pth
+03_AML2425_Unlearning/Practice/checkpoint/trained_model.pth
+03_AML2425_Unlearning/Practice/data/cifar-10-batches-py/batches.meta
+03_AML2425_Unlearning/Practice/data/cifar-10-batches-py/data_batch_1
+03_AML2425_Unlearning/Practice/data/cifar-10-batches-py/data_batch_2
+03_AML2425_Unlearning/Practice/data/cifar-10-batches-py/data_batch_3
+03_AML2425_Unlearning/Practice/data/cifar-10-batches-py/data_batch_4
+03_AML2425_Unlearning/Practice/data/cifar-10-batches-py/data_batch_5
+03_AML2425_Unlearning/Practice/checkpoint/trained_model.pth
+03_AML2425_Unlearning/Practice/data/cifar-10-batches-py/test_batch
+03_AML2425_Unlearning/Practice/checkpoint/trained_model.pth
+03_AML2425_Unlearning/Practice/data/cifar-10-python.tar.gz
