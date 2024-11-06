@@ -29,21 +29,33 @@ from torch_scatter import scatter
 class EdgeModel(nn.Module):
     def __init__(self, in_dim, out_dim, activation=True):
         super().__init__()
-        # replace this with the class EdgeModel implemented by you in the theory part
         if activation:
             self.edge_mlp = nn.Sequential(nn.Linear(in_dim, out_dim), nn.ReLU())
         else:
             self.edge_mlp = nn.Sequential(nn.Linear(in_dim, out_dim))
 
     def forward(self, src, dest, edge_attr, u, batch):
-        # replace this with the forward function of the EdgeModel class implemented in the theory part
-        u_expanded = u[batch]
-        x = torch.cat((src, dest, edge_attr, u_expanded), dim=1)
+        # **IMPORTANT: YOU ARE NOT ALLOWED TO USE FOR LOOPS!**
+        # src, dest: [E, F_x], where E is the number of edges. src is the source node features and dest is the destination node features of each edge.
+        # edge_attr: [E, F_e]
+        # u: [B, F_u], where B is the number of graphs.
+        # batch: only here it will have shape [E] with max entry B - 1, because here it indicates the graph index for each edge.
+
+        '''
+        Add your code below
+        '''
+
+        u_batch = u[batch]  # what's the size of batch? [B,E]?
+
+        # concatenate 
+        edge_input = torch.cat([src, dest, edge_attr, u_batch], dim=-1) # [E, 2F_x + F_e + F_u] dim = 1
         
-        new_edge_attr = self.edge_mlp(x)
+        # Pass through the MLP
+        edge_attr = self.edge_mlp(edge_input)
+
+        print("Edge Attr", edge_attr.shape)
         
-        
-        return new_edge_attr
+        return edge_attr
 
 
 class NodeModel(nn.Module):
@@ -56,37 +68,52 @@ class NodeModel(nn.Module):
         else:
             self.node_mlp_1 = nn.Sequential(nn.Linear(in_dim_mlp1, out_dim))
             self.node_mlp_2 = nn.Sequential(nn.Linear(in_dim_mlp2, out_dim))
-            
-            
+
     def forward(self, x, edge_index, edge_attr, u, batch):
-        # replace this with the forward function of the NodeModel class implemented in the theory part
+        # **IMPORTANT: YOU ARE NOT ALLOWED TO USE FOR LOOPS!**
+        # x: [N, F_x], where N is the number of nodes.
+        # edge_index: [2, E] with max entry N - 1.
+        # edge_attr: [E, F_e]
+        # u: [B, F_u]
+        # batch: [N] with max entry B - 1.
+
+        '''
+        Add your code below
+        '''
+
+        # find neighbors of each node
+        sources = x[edge_index[0]] # [E, F_x]
+        dests = x[edge_index[1]] # [E, F_x]
         
-        sources = x[edge_index[0]]
-        dests = x[edge_index[1]]
+        u_edge = u[batch[edge_index[0]]]  # [E, F_u]
+
+        # concatenate
+        edge_input = torch.cat([sources, dests, edge_attr, u_edge], dim=-1) # [E, 2F_x + F_e + F_u]
+
+        # Pass through the MLP
+        edge_attr = self.node_mlp_1(edge_input) # [E, F_e]
+
+        # scatter
+        out = scatter(edge_attr, edge_index[1], dim=0,dim_size=x.size(0), reduce=self.reduce) 
+
+        print("Out", out.shape)
         
-        #global features for each source edge
-        u_edge = u[batch[edge_index[0]]]
+        u_batch = u[batch] 
         
-        edge_input = torch.cat([sources, dests, edge_attr, u_edge], dim=-1)
-        
-        edge_attr = self.node_mlp_1(edge_input)
-        
-        aggregated_out = scatter(edge_attr, edge_index[1], dim=0, reduce=self.reduce)
-        
-        u_expanded = u[batch]
-        
-        new_input = torch.cat((x, aggregated_out, u_expanded), dim=1)
-        
-        output = self.node_mlp_2(new_input)
-        
-        return output
+        # concatenate
+        node_input = torch.cat([x, out, u_batch], dim=-1)
+
+        # Pass through the MLP
+        x = self.node_mlp_2(node_input)
+
+        print("X", x.shape) 
+
+        return x
 
 
 class GlobalModel(nn.Module):
-    # def __init__(self, in_dim, out_dim, reduce='sum'):
     def __init__(self, in_dim, out_dim, activation=True, reduce='sum'):
         super().__init__()
-        # replace this with the class GlobalModel implemented by you in the theory part
         if activation:
             self.global_mlp = nn.Sequential(nn.Linear(in_dim, out_dim), nn.ReLU())
         else:
@@ -94,18 +121,25 @@ class GlobalModel(nn.Module):
         self.reduce = reduce
 
     def forward(self, x, edge_index, edge_attr, u, batch):
-        # replace this with the forward function of the GlobalModel class implemented in the theory part
-        
-        node_agg = scatter(x, batch, dim=0, reduce=self.reduce)  # [B, F_x]
-        
-        edge_agg = scatter(edge_attr, batch[edge_index[0]], dim=0, reduce=self.reduce)  # [B, F_e]
+        #**IMPORTANT: YOU ARE NOT ALLOWED TO USE FOR LOOPS!**
+        # x: [N, F_x], where N is the number of nodes.
+        # edge_index: [2, E] with max entry N - 1.
+        # edge_attr: [E, F_e]
+        # u: [B, F_u]
+        # batch: [N] with max entry B - 1.
 
-        input = torch.cat([node_agg, edge_agg, u], dim=-1)
-        
-        output = self.global_mlp(input)
-        
-        
-        return output
+        '''
+        Add your code below
+        '''
+
+        x_global = scatter(x, batch, dim=0, reduce=self.reduce)
+        batch_edge = batch[edge_index[0]]
+        e_global = scatter(edge_attr, batch_edge, dim=0, reduce=self.reduce)
+        u = self.global_mlp(torch.cat([x_global, e_global, u], dim=-1))
+
+        print("u", u.shape)
+
+        return u
 
 
 class MPNN(nn.Module):
@@ -120,17 +154,49 @@ class MPNN(nn.Module):
         self.use_bn = use_bn
         self.dropout = dropout
         self.reduce = reduce
-        
-       #rest of the code here
 
+        assert num_layers >= 2
+
+        '''
+        Instantiate the first layer models with correct parameters below
+        '''
+        edge_model = EdgeModel(in_dim=2*node_in_dim + edge_in_dim + global_in_dim, out_dim=hidden_dim)
+        node_model = NodeModel(in_dim_mlp1=2*node_in_dim + hidden_dim + global_in_dim, in_dim_mlp2=node_in_dim + hidden_dim + global_in_dim, out_dim=hidden_dim)
+        global_model = GlobalModel(in_dim=hidden_dim + hidden_dim + global_in_dim, out_dim=hidden_dim)
+        self.convs.append(MetaLayer(edge_model=edge_model, node_model=node_model, global_model=global_model))
+        self.node_norms.append(nn.BatchNorm1d(hidden_dim))
+        self.edge_norms.append(nn.BatchNorm1d(hidden_dim))
+        self.global_norms.append(nn.BatchNorm1d(hidden_dim))
+        
+        for _ in range(num_layers-2):
+            '''
+            Add your code below
+            '''
+            edge_model = EdgeModel(in_dim=2*hidden_dim + hidden_dim + hidden_dim, out_dim=hidden_dim)
+            node_model = NodeModel(in_dim_mlp1=2*hidden_dim + hidden_dim + hidden_dim, in_dim_mlp2=hidden_dim + hidden_dim + hidden_dim, out_dim=hidden_dim)
+            global_model = GlobalModel(in_dim=hidden_dim + hidden_dim + hidden_dim, out_dim=hidden_dim)
+            self.convs.append(MetaLayer(edge_model=edge_model, node_model=node_model, global_model=global_model))
+            self.node_norms.append(nn.BatchNorm1d(hidden_dim))
+            self.edge_norms.append(nn.BatchNorm1d(hidden_dim))
+            self.global_norms.append(nn.BatchNorm1d(hidden_dim))
+
+        '''
+        Add your code below
+        '''
+        # last MetaLayer without batch norm and without using activation functions
+        edge_model = EdgeModel(in_dim=2*hidden_dim + hidden_dim + hidden_dim, out_dim=edge_out_dim, activation=False)
+        node_model = NodeModel(in_dim_mlp1=2*hidden_dim + edge_out_dim + hidden_dim,
+                               in_dim_mlp2=hidden_dim + edge_out_dim + hidden_dim, out_dim=node_out_dim, activation=False)
+        global_model = GlobalModel(in_dim=node_out_dim + edge_out_dim + hidden_dim, out_dim=global_out_dim, activation=False)
+        self.convs.append(MetaLayer(edge_model=edge_model, node_model=node_model, global_model=global_model))
+    
     def forward(self, x, edge_index, edge_attr, u, batch, *args):
 
         for i, conv in enumerate(self.convs):
             '''
             Add your code below
             '''
-
-            print(f"After layer {i}: x shape: {x.shape}, edge_attr shape: {edge_attr.shape}, u shape: {u.shape}")
+            x, edge_attr, u = conv(x, edge_index, edge_attr, u, batch)
 
             if i != len(self.convs)-1 and self.use_bn:
                 '''
@@ -139,7 +205,6 @@ class MPNN(nn.Module):
                 x = self.node_norms[i](x)
                 edge_attr = self.edge_norms[i](edge_attr)
                 u = self.global_norms[i](u)
-
 
                 x = F.dropout(x, p=self.dropout, training=self.training)
                 edge_attr = F.dropout(edge_attr, p=self.dropout, training=self.training)
