@@ -139,7 +139,7 @@ class GlobalModel(nn.Module):
         
         node_agg = scatter(x, batch, dim=0, reduce=self.reduce)  # [B, F_x]
         
-        edge_agg = scatter(edge_attr, batch[edge_index[0]], dim=0, reduce=self.reduce)  # [B, F_e]
+        edge_agg = scatter(edge_attr, batch[edge_index[1]], dim=0, reduce=self.reduce)  # [B, F_e]
 
         input = torch.cat([node_agg, edge_agg, u], dim=-1)
         
