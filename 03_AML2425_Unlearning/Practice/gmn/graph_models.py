@@ -47,13 +47,9 @@ class EdgeModel(nn.Module):
 
         u_batch = u[batch]
 
-        # concatenate 
         edge_input = torch.cat([dest, src, edge_attr, u_batch], dim=-1) # [E, 2F_x + F_e + F_u] dim = 1
         
-        # Pass through the MLP
         edge_attr = self.edge_mlp(edge_input)
-
-        print("Edge Attr", edge_attr.shape)
         
         return edge_attr
 
@@ -90,23 +86,18 @@ class NodeModel(nn.Module):
         # concatenate
         edge_input = torch.cat([dests, sources, edge_attr, u_edge], dim=-1) # [E, 2F_x + F_e + F_u]
 
-        # Pass through the MLP
         edge_attr = self.node_mlp_1(edge_input) # [E, F_e]
 
         # scatter
         out = scatter(edge_attr, edge_index[1], dim=0,dim_size=x.size(0), reduce=self.reduce) 
-
-        print("Out", out.shape)
         
         u_batch = u[batch] 
         
         # concatenate
         node_input = torch.cat([x, out, u_batch], dim=-1)
 
-        # Pass through the MLP
         x = self.node_mlp_2(node_input)
 
-        print("X", x.shape) 
 
         return x
 
@@ -137,7 +128,6 @@ class GlobalModel(nn.Module):
         e_global = scatter(edge_attr, batch_edge, dim=0, reduce=self.reduce)
         u = self.global_mlp(torch.cat([x_global, e_global, u], dim=-1))
 
-        print("u", u.shape)
 
         return u
 
@@ -183,10 +173,10 @@ class MPNN(nn.Module):
         '''
         Add your code below
         '''
-        # last MetaLayer without batch norm and without using activation functions
+        
         edge_model = EdgeModel(in_dim=2*hidden_dim + hidden_dim + hidden_dim, out_dim=edge_out_dim, activation=False)
         node_model = NodeModel(in_dim_mlp1=2*hidden_dim + edge_out_dim + hidden_dim,
-                               in_dim_mlp2=hidden_dim + edge_out_dim + hidden_dim, out_dim=node_out_dim, activation=False)
+                               in_dim_mlp2=hidden_dim + node_out_dim + hidden_dim, out_dim=node_out_dim, activation=False)
         global_model = GlobalModel(in_dim=node_out_dim + edge_out_dim + hidden_dim, out_dim=global_out_dim, activation=False)
         self.convs.append(MetaLayer(edge_model=edge_model, node_model=node_model, global_model=global_model))
     
